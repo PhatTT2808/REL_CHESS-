@@ -1,0 +1,64 @@
+# =====================================================================
+# Cấu hình "smoke test" — chạy nhanh trên CPU để kiểm chứng pipeline.
+# Dùng để validate code trên máy không có GPU (vd: laptop 4-core).
+#
+# Chạy:  python scripts/train_rl.py --config configs/smoke.yaml
+# =====================================================================
+
+seed: 42
+
+paths:
+  checkpoints: checkpoints_smoke
+  logs: logs_smoke
+  figures: figures_smoke
+  pool: checkpoints_smoke/pool
+
+model:
+  gnn_hidden_dim: 64
+  gnn_layers: 3
+  gnn_heads: 4
+  motif_dim: 32
+  num_motifs: 16
+  policy_hidden: 128
+  value_hidden: 64
+  dropout: 0.1
+
+training:
+  lr: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  update_epochs: 2
+  batch_size: 64
+  total_steps: 2048
+  games_per_batch: 8
+  max_moves: 60
+  checkpoint_interval: 512
+  device: cpu
+  num_workers: 1
+  use_amp: false
+  minibatch_size: 256
+  pool_snapshot_interval: 2
+
+env:
+  max_moves: 60
+  perpetual_check_limit: 6
+  legal_move_filter: true
+
+reward:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0
+  material_coef: 0.01
+
+evaluation:
+  num_games: 10
+  engine_depth: 2
+  engine_threads: 1
+  elo_k: 32
+  bootstrap_samples: 200
+  engine_path: ""
+  engine_protocol: uci

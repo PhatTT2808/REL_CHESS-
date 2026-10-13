@@ -1,0 +1,82 @@
+# =====================================================================
+# Cấu hình mặc định (production / GPU Linux)
+# ---------------------------------------------------------------------
+# Đây là cấu hình "đầy đủ" theo thiết kế đồ án (1e6 steps, 512 games/batch).
+# Trên máy CPU yếu, hãy dùng ``configs/smoke.yaml`` để chạy thử nhanh.
+#
+# Chạy:  python scripts/train_rl.py --config configs/default.yaml
+# =====================================================================
+
+# --- Tái lập kết quả (reproducibility) ---
+seed: 42
+
+# --- Đường dẫn (không hardcode trong code, tất cả đọc từ đây) ---
+paths:
+  checkpoints: checkpoints
+  logs: logs
+  figures: figures
+  pool: checkpoints/pool
+
+# --- Kiến trúc mô hình ---
+model:
+  gnn_hidden_dim: 128
+  gnn_layers: 3
+  gnn_heads: 4
+  motif_dim: 64
+  num_motifs: 30
+  policy_hidden: 512
+  value_hidden: 256
+  dropout: 0.1
+
+# --- Huấn luyện PPO ---
+training:
+  lr: 0.00025
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_epsilon: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  update_epochs: 4
+  batch_size: 512
+  total_steps: 1000000
+  games_per_batch: 512
+  max_moves: 200
+  checkpoint_interval: 10000
+  # auto = dùng CUDA nếu có, ngược lại CPU
+  device: auto
+  # Số process sinh self-play song song (bottleneck thật là CPU vì cchess pure Python).
+  # 0 = tự động = os.cpu_count() - 1
+  num_workers: 0
+  # Dùng AMP (mixed precision) khi có CUDA
+  use_amp: true
+  # Kích thước batch con khi cập nhật PPO (mini-batch gradient descent)
+  minibatch_size: 4096
+  # Số bước giữa 2 lần snapshot model vào opponent pool
+  pool_snapshot_interval: 5
+
+# --- Môi trường ---
+env:
+  max_moves: 200
+  perpetual_check_limit: 6
+  # Lọc các nước đi tự-chiếu-tướng khỏi legal mask (đúng luật nhưng tốn CPU).
+  # Bật = đúng luật; tắt = nhanh hơn nhưng chấp nhận nước hớ khi debug.
+  legal_move_filter: true
+
+# --- Phần thưởng ---
+reward:
+  win: 1.0
+  loss: -1.0
+  draw: 0.0
+  material_coef: 0.01
+
+# --- Đánh giá ---
+evaluation:
+  num_games: 100
+  engine_depth: 2
+  engine_threads: 1
+  elo_k: 32
+  bootstrap_samples: 1000
+  # Đường dẫn engine UCI/UCCI (Pikafish/Eleeye). Để rỗng => bỏ qua bài test engine.
+  engine_path: ""
+  engine_protocol: uci

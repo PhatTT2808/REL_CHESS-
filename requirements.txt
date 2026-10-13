@@ -1,0 +1,37 @@
+# =====================================================================
+# Yêu cầu thư viện cho dự án Neural-Symbolic Xiangqi RL  (Python 3.12)
+# ---------------------------------------------------------------------
+# Cách cài (khuyên dùng venv — nhẹ, có sẵn trong Python):
+#
+#   python3.12 -m venv .venv
+#   source .venv/bin/activate
+#   python -m pip install --upgrade pip
+#   python -m pip install torch --index-url https://download.pytorch.org/whl/cpu   # hoặc /cu124
+#   python -m pip install -r requirements.txt
+#
+# (conda cũng dùng được:  conda create -y -n REL_chess python=3.12)
+#
+# LƯU Ý VỀ TORCH:
+#   - CPU:  --index-url https://download.pytorch.org/whl/cpu
+#   - CUDA: --index-url https://download.pytorch.org/whl/cu124
+#   - Nếu bỏ qua --index-url, pip mặc định trên Linux tải bản CUDA (nặng hơn).
+#
+# Từ torch_geometric >= 2.3 KHÔNG cần torch-scatter / torch-sparse;
+# GATConv chạy thuần PyTorch => chỉ cần ``pip install torch_geometric``.
+# =====================================================================
+
+# --- Deep learning ---
+torch>=2.2
+torch_geometric>=2.6
+
+# --- Môi trường cờ tướng (pure Python, không có dependency phụ) ---
+cchess==1.25.5
+
+# --- Tính toán / trực quan hóa / cấu hình ---
+numpy>=1.24
+matplotlib>=3.7
+PyYAML>=6.0
+
+# --- Kiểm thử ---
+pytest>=7.4
+
