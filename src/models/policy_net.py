@@ -36,10 +36,10 @@ NEG_INF = -1e9
 class PolicyOutput:
     """Kết quả forward của mạng chính sách."""
 
-    logits: torch.Tensor          # (B, 8100) — đã áp legal mask
-    value: torch.Tensor           # (B,)      — giá trị thế cờ trong [-1, 1]
-    attn_weights: torch.Tensor    # (B, num_motifs)
-    graph_emb: torch.Tensor       # (B, gnn_hidden_dim)
+    logits: torch.Tensor  # (B, 8100) — đã áp legal mask
+    value: torch.Tensor  # (B,)      — giá trị thế cờ trong [-1, 1]
+    attn_weights: torch.Tensor  # (B, num_motifs)
+    graph_emb: torch.Tensor  # (B, gnn_hidden_dim)
 
 
 class XiangqiPolicyNet(nn.Module):
@@ -149,7 +149,10 @@ class XiangqiPolicyNet(nn.Module):
         if empty_rows.any():
             mask = mask.clone()
             mask[empty_rows] = True
-        return logits.masked_fill(~mask, NEG_INF)
+
+        # Ép kiểu NEG_INF sang đúng dtype và device của logits để tránh lỗi overflow với float16
+        neg_inf = torch.tensor(NEG_INF, dtype=logits.dtype, device=logits.device)
+        return logits.masked_fill(~mask, neg_inf)
 
     # ------------------------------------------------------------------
     # Lấy hành động / đánh giá
@@ -214,4 +217,3 @@ class XiangqiPolicyNet(nn.Module):
     def num_parameters(self) -> int:
         """Tổng số tham số có thể huấn luyện."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
