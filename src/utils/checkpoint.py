@@ -28,6 +28,8 @@ def save_checkpoint(
     checkpoint_dir: str,
     extra: Optional[Dict[str, Any]] = None,
     filename: Optional[str] = None,
+    scheduler: Optional[Any] = None,
+    rng_state: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """Lưu checkpoint ra ``checkpoint_dir/step_<step>.pt``.
 
@@ -38,6 +40,8 @@ def save_checkpoint(
         checkpoint_dir: Thư mục lưu checkpoint (từ config).
         extra: Dict thông tin bổ sung (epoch, metrics...).
         filename: Tên file tuỳ chọn; mặc định ``step_<step>.pt``.
+        scheduler: LR scheduler (nếu có) — **quan trọng cho resume**.
+        rng_state: RNG state (nếu có) — tránh lặp/thôi miên self-play khi resume.
 
     Returns:
         Đường dẫn file checkpoint đã lưu.
@@ -52,6 +56,10 @@ def save_checkpoint(
     }
     if optimizer is not None:
         payload["optimizer_state"] = optimizer.state_dict()
+    if scheduler is not None:
+        payload["scheduler_state"] = scheduler.state_dict()
+    if rng_state is not None:
+        payload["rng_state"] = rng_state
     if extra:
         payload["extra"] = extra
 
@@ -65,17 +73,20 @@ def load_checkpoint(
     model: torch.nn.Module,
     optimizer: Optional[torch.optim.Optimizer] = None,
     map_location: str = "cpu",
+    scheduler: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """Nạp checkpoint vào mô hình (và optimizer nếu cung cấp).
+    """Nạp checkpoint vào mô hình (và optimizer/scheduler nếu cung cấp).
 
     Args:
         path: Đường dẫn file checkpoint.
         model: Mô hình đích.
         optimizer: Optimizer đích (tuỳ chọn).
         map_location: Thiết bị để map tensor khi nạp.
+        scheduler: LR scheduler đích (tuỳ chọn) — cần cho resume cosine
+            đúng tiến độ (vòng trước thiếu nên resume khởi lại từ đầu).
 
     Returns:
-        Dict metadata (``step``, ``extra``...).
+        Dict metadata (``step``, ``extra``, ``restored``).
 
     Raises:
         FileNotFoundError: Nếu file không tồn tại.
@@ -86,11 +97,34 @@ def load_checkpoint(
 
     payload = torch.load(resolved, map_location=map_location, weights_only=False)
     model.load_state_dict(payload["model_state"])
-    if optimizer is not None and payload.get("optimizer_state") is not None:
-        optimizer.load_state_dict(payload["optimizer_state"])
 
-    logger.info("Đã nạp checkpoint: %s (step=%s)", resolved, payload.get("step"))
-    return {"step": payload.get("step", 0), "extra": payload.get("extra", {})}
+    restored = ["model"]
+    opt_state = payload.get("optimizer_state")
+    if optimizer is not None and opt_state is not None:
+        # Chỉ khôi phục optimizer khi state thực sự tồn tại; nếu rỗng thì bỏ qua
+        # (checkpoint cũ tạo trước bản sửa này sẽ không có momentum).
+        if opt_state.get("state"):
+            optimizer.load_state_dict(opt_state)
+            restored.append("optimizer")
+        else:
+            logger.warning(
+                "Checkpoint không có optimizer state ({}); bỏ qua khôi phục "
+                "optimizer — momentum sẽ bị mất.",
+                resolved,
+            )
+
+    sched_state = payload.get("scheduler_state")
+    if scheduler is not None and sched_state is not None:
+        scheduler.load_state_dict(sched_state)
+        restored.append("scheduler")
+
+    logger.info("Đã nạp checkpoint: %s (step=%s, khôi phục=%s)",
+                 resolved, payload.get("step"), ",".join(restored))
+    return {
+        "step": payload.get("step", 0),
+        "extra": payload.get("extra", {}),
+        "restored": restored,
+    }
 
 
 def list_checkpoints(checkpoint_dir: str) -> list[tuple[int, Path]]:

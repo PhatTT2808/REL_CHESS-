@@ -143,10 +143,16 @@ def train(config: Dict[str, Any], resume: bool = False) -> None:
         ckpt = latest_checkpoint(paths["checkpoints"])
         if ckpt is not None:
             meta = load_checkpoint(
-                ckpt, model, agent.optimizer, map_location=str(device)
+                ckpt, model, agent.optimizer, map_location=str(device),
+                scheduler=agent.scheduler,
             )
             start_step = int(meta.get("step", 0))
-            logger.info("Tiếp tục huấn luyện từ step %d", start_step)
+            logger.info(
+                "Tiếp tục huấn luyện từ step %d (lr=%.2e, restored=%s)",
+                start_step,
+                agent.optimizer.param_groups[0]["lr"],
+                meta.get("restored", []),
+            )
         else:
             logger.warning("Không tìm thấy checkpoint để resume; bắt đầu từ đầu.")
     if len(pool) == 0:
@@ -236,6 +242,7 @@ def train(config: Dict[str, Any], resume: bool = False) -> None:
             save_checkpoint(
                 model, agent.optimizer, step, paths["checkpoints"],
                 extra={"batch": batch_idx, "metrics": metrics},
+                scheduler=agent.scheduler,
             )
             last_checkpoint_step = step
 
@@ -243,6 +250,7 @@ def train(config: Dict[str, Any], resume: bool = False) -> None:
     save_checkpoint(
         model, agent.optimizer, step, paths["checkpoints"],
         extra={"batch": batch_idx, "final": True},
+        scheduler=agent.scheduler,
     )
     logger.info(
         "Hoàn tất huấn luyện: %d bước trong %.2f giờ.",

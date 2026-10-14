@@ -51,8 +51,10 @@ env:
 reward:
   win: 1.0
   loss: -1.0
-  draw: 0.0
+  draw: -0.1
   material_coef: 0.01
+  step_penalty: 0.005
+  potential_gamma: 0.99
 
 evaluation:
   num_games: 10

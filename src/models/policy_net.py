@@ -8,7 +8,13 @@ Luồng dữ liệu (đúng thiết kế đồ án)::
                                                           + attn_weights (30)
     Concat [graph_emb(128) | tactical_context(64)] = 192
         ├──► Policy Head ──► logits (8100)  + legal mask
-        └──► Value Head  ──► value (1), kích hoạt tanh
+        └──► Value Head  ──► value (1)
+
+Ghi chú về Value head:
+    Trước đây có ``nn.Tanh()`` — đã gỡ bỏ (vòng train 1e6 bước cho thấy tanh
+    kẹp output trong [-1,1] nên không thể biễu diễn return thực, vì tổng reward
+    một ván (potential-based + terminal) thường vượt ra ngoài. Sửa lại thành
+    ``Linear`` thuần để thang giá trị không bị bóp méo.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ class PolicyOutput:
     """Kết quả forward của mạng chính sách."""
 
     logits: torch.Tensor  # (B, 8100) — đã áp legal mask
-    value: torch.Tensor  # (B,)      — giá trị thế cờ trong [-1, 1]
+    value: torch.Tensor  # (B,)      — giá trị thế cờ, KHÔNG bị kẹp (Linear thuần)
     attn_weights: torch.Tensor  # (B, num_motifs)
     graph_emb: torch.Tensor  # (B, gnn_hidden_dim)
 
@@ -102,7 +108,6 @@ class XiangqiPolicyNet(nn.Module):
             nn.Linear(self.shared_dim, value_hidden),
             nn.ReLU(),
             nn.Linear(value_hidden, 1),
-            nn.Tanh(),
         )
 
     def forward(

@@ -321,7 +321,30 @@ scp -P <port> user@host:~/Project_REL/figures/*.png ./figures/
 | PPO | lr 2.5e-4 (cosine), γ=0.99, GAE λ=0.95, clip 0.2, vf 0.5, ent 0.01, grad-clip 0.5, 4 epochs |
 | Batch | 512 games, max 200 moves, minibatch 4096 bước |
 | Tổng | 1,000,000 steps, checkpoint mỗi 10,000 steps |
-| Reward | thắng +1, thua −1, hoà 0, material_coef 0.01 (shaping nhẹ) |
+| Reward | thắng +1, thua −1, **hoà −0.1**, **step_penalty 0.005**, potential-based shaping |
+
+### 6.1. Lưu ý: reward đã sửa sau vòng train đầu tiên
+
+Vòng train 1e6 bước đầu (kết quả: 91/100 ván hoà, thua cả Random) cho thấy
+**reward cũ sai**. Cụ thể:
+
+- Shaping kiểu cũ `r_t = coef·Φ(s_t)` cộng dồn **~12.5 điểm/ván** (terminal chỉ ±1),
+  khiến agent học "ăn cho nhiều rồi giằng co" thay vì chiếu hết.
+- Value head có `tanh` kẹp trong [−1,1] nên không biểu diễn được return ±12.
+
+Đã sửa:
+
+1. **Potential-based shaping** (Ng et al., 1999): `r = γ·Φ(s') − Φ(s)`, bảo toàn
+   chính sách tối ưu — tổng shaping không còn tích luỹ theo độ dài ván.
+2. **Value head bỏ `tanh`** → thang giá trị tự do.
+3. **Hoà = −0.1, step_penalty = 0.005** → phạt kéo giờ.
+4. **Checkpoint giờ lưu scheduler + optimizer + RNG** → resume đúng tiến độ.
+
+Đo sau khi sửa (smoke test): tổng reward/ván ≈ **−0.25…−0.42** (trước: ~±12),
+`value_loss` giảm từ **1.3–1.7 → ~0.005–0.015**.
+
+> ⚠️ **Checkpoint cũ không tương thích** (do bỏ `tanh` làm đổi kiến trúc value_head).
+> Phải train lại từ đầu, không `--resume` từ checkpoint cũ.
 
 ---
 

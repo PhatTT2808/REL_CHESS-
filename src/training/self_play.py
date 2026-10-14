@@ -36,7 +36,8 @@ from src.training.reward import (
     RESULT_LOSS,
     RESULT_WIN,
     RewardConfig,
-    material_shaping,
+    compute_reward,
+    material_potential,  # giữ lại cho _terminal_value nếu cần
 )
 from src.utils.checkpoint import load_checkpoint
 from src.utils.config import ensure_dir
@@ -320,6 +321,12 @@ class SelfPlayRunner:
                 action = self._opponent_action(opponent, graph, mask)
                 log_prob, value, attn = 0.0, 0.0, None
 
+            # Phi(s) TRƯỚC nước đi. Phải tính trước vì ``board.move()`` của
+            # cchess sửa bàn cờ TẠI CHỖ (không trả về bản sao), nên giữ tham chiếu
+            # ``env.board`` rồi tính sau sẽ cho cùng giá trị với s' => shaping = 0.
+            phi_prev = material_potential(
+                env.board, agent_color, self.reward_config.material_coef
+            )
             next_state, _env_reward, done, info = env.step(action)
             reason = info["reason"]
 
@@ -327,8 +334,9 @@ class SelfPlayRunner:
                 if done:
                     r = self._terminal_value(reason, mover_is_winner_side=True)
                 else:
-                    r = material_shaping(
-                        env.board, agent_color, self.reward_config.material_coef
+                    r = compute_reward(
+                        env.board, agent_color, config=self.reward_config,
+                        terminal=False, phi_prev=phi_prev,
                     )
                 traj.append(
                     graph=graph,

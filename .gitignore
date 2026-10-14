@@ -1,2 +1,8 @@
 *.pt
 /checkpoints
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/metrics.jsonl
+logs/train.log
+figures/

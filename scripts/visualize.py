@@ -82,6 +82,10 @@ def plot_metrics_curves(records: List[Dict[str, Any]], figures_dir: Path) -> Opt
     ]
     for ax, key, title, color in panels:
         values = [r.get(key, float("nan")) for r in records]
+        if all(v != v for v in values):  # tất cả NaN
+            ax.text(0.5, 0.5, f"(không có dữ liệu: {key})",
+                    transform=ax.transAxes, ha="center", va="center",
+                    fontsize=10, color="gray")
         ax.plot(steps, values, color=color, linewidth=1.6)
         ax.set_title(title)
         ax.set_xlabel("step")

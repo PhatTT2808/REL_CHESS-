@@ -61,10 +61,12 @@ def test_policy_forward_shapes(batched_graphs, small_model) -> None:
     b = batch.num_graphs
     assert out.logits.shape == (b, ACTION_SPACE)
     assert out.value.shape == (b,)
+    assert torch.isfinite(out.value).all()
     assert out.attn_weights.shape == (b, small_model.num_motifs)
     assert out.graph_emb.shape == (b, small_model.gnn_hidden_dim)
-    # Value phải nằm trong [-1, 1] do tanh.
-    assert (out.value >= -1.0).all() and (out.value <= 1.0).all()
+    # Value KHÔNG bị tanh kẹp nữa: thang giá trị tự do để biểu diễn return
+    # (terminal ±1 + shaping nhẹ). Trường hợp khởi tạo có thể vẫn nằm [-1,1]
+    # nên chỉ kiểm tra finite.
 
 
 def test_shared_dim_is_192() -> None:
@@ -159,8 +161,8 @@ def test_head_dimensions_model_defaults() -> None:
     last_policy = model.policy_head[-1]
     assert last_policy.out_features == ACTION_SPACE
     assert model.value_head[0].in_features == 192
-    assert model.value_head[-2].out_features == 1  # [-1] là Tanh, [-2] là Linear
-    assert isinstance(model.value_head[-1], torch.nn.Tanh)
+    assert model.value_head[-1].out_features == 1  # [-1] là Linear cuối (Linear 256->1)
+    assert isinstance(model.value_head[-1], torch.nn.Linear)
 
 
 def test_deterministic_forward_with_same_seed() -> None:

@@ -64,11 +64,16 @@ env:
   legal_move_filter: true
 
 # --- Phần thưởng ---
+# Sửa sau vòng train 1e6 bước (xem src/training/reward.py):
+#   - draw -0.1 + step_penalty 0.005: chống "kéo giờ" (cũ 91% hoà).
+#   - material_coef là hệ số PHI cho potential-based shaping (không lấn terminal).
 reward:
   win: 1.0
   loss: -1.0
-  draw: 0.0
+  draw: -0.1
   material_coef: 0.01
+  step_penalty: 0.005
+  potential_gamma: 0.99
 
 # --- Đánh giá ---
 evaluation:
