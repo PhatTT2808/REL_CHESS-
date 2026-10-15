@@ -1,0 +1,17 @@
+2026-10-15 20:38:44 | INFO    | train_rl | ======================================================================
+2026-10-15 20:38:44 | INFO    | train_rl | Bắt đầu huấn luyện Neural-Symbolic Xiangqi RL
+2026-10-15 20:38:44 | INFO    | train_rl | Config: /home/tanphat/phat1/REL301m/Project_REL/configs/smoke.yaml
+2026-10-15 20:38:44 | INFO    | train_rl | Device: cpu | num_workers (tham khảo): 1
+2026-10-15 20:38:44 | INFO    | train_rl | Seed: 42 | log: /home/tanphat/phat1/REL301m/Project_REL/logs_smoke/train.log
+2026-10-15 20:38:44 | INFO    | train_rl | ======================================================================
+2026-10-15 20:38:44 | INFO    | train_rl | Số tham số model: 1,099,653
+2026-10-15 20:38:49 | INFO    | train_rl | step     240/2048 | batch    1 | games   8 | T/B/H  0/ 0/ 8 | avg_moves  60.0 | pol -0.0117 val 0.0154 ent 3.695 kl 0.0018 | 48.2 st/s | ETA 0.01h
+2026-10-15 20:38:54 | INFO    | train_rl | step     464/2048 | batch    2 | games   8 | T/B/H  0/ 1/ 7 | avg_moves  56.0 | pol -0.0089 val 0.0098 ent 3.665 kl 0.0017 | 49.1 st/s | ETA 0.01h
+2026-10-15 20:38:58 | INFO    | train_rl | step     704/2048 | batch    3 | games   8 | T/B/H  0/ 0/ 8 | avg_moves  60.0 | pol -0.0025 val 0.0097 ent 3.705 kl 0.0014 | 49.1 st/s | ETA 0.01h
+2026-10-15 20:39:04 | INFO    | train_rl | step     940/2048 | batch    4 | games   8 | T/B/H  0/ 1/ 7 | avg_moves  59.0 | pol 0.0003 val 0.0084 ent 3.689 kl 0.0017 | 48.2 st/s | ETA 0.01h
+2026-10-15 20:39:09 | INFO    | train_rl | step    1180/2048 | batch    5 | games   8 | T/B/H  0/ 0/ 8 | avg_moves  60.0 | pol -0.0024 val 0.0060 ent 3.547 kl 0.0020 | 47.9 st/s | ETA 0.01h
+2026-10-15 20:39:14 | INFO    | train_rl | step    1412/2048 | batch    6 | games   8 | T/B/H  1/ 0/ 7 | avg_moves  57.9 | pol -0.0072 val 0.0098 ent 3.701 kl 0.0013 | 47.4 st/s | ETA 0.00h
+2026-10-15 20:39:19 | INFO    | train_rl | step    1652/2048 | batch    7 | games   8 | T/B/H  0/ 0/ 8 | avg_moves  60.0 | pol 0.0004 val 0.0041 ent 3.652 kl 0.0013 | 47.2 st/s | ETA 0.00h
+2026-10-15 20:39:24 | INFO    | train_rl | step    1887/2048 | batch    8 | games   8 | T/B/H  1/ 0/ 7 | avg_moves  58.6 | pol -0.0079 val 0.0127 ent 3.627 kl 0.0017 | 47.2 st/s | ETA 0.00h
+2026-10-15 20:39:29 | INFO    | train_rl | step    2127/2048 | batch    9 | games   8 | T/B/H  0/ 0/ 8 | avg_moves  60.0 | pol -0.0105 val 0.0045 ent 3.517 kl 0.0019 | 47.1 st/s | ETA -0.00h
+2026-10-15 20:39:29 | INFO    | train_rl | Hoàn tất huấn luyện: 2127 bước trong 0.01 giờ.

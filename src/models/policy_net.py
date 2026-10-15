@@ -214,8 +214,24 @@ class XiangqiPolicyNet(nn.Module):
         probs = log_probs_all.exp()
 
         log_probs = log_probs_all.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
-        # Entropy của phân phối đã mask (prob ngoài mask ~ 0 nên số hạng an toàn)
-        entropy = -(probs * log_probs_all).sum(dim=-1)
+
+        # Entropy của phân phối ĐÃ mask.
+        #
+        # BẪY (bug đã làm hỏng toàn bộ vòng train 1e6 bước): hành động ngoài mask
+        # có ``log_probs_all = -inf`` và ``probs = 0``, nên ``probs * log_probs_all``
+        # = ``0 * -inf`` = **NaN**. NaN lan sang ``loss`` -> ``GradScaler`` bỏ qua
+        # ``optimizer.step()`` -> weights đứng yên suốt 21 batch.
+        #
+        # Cách sửa: chỉ giữ lại số hạng ở hành động hợp lệ, zero-out phần còn lại.
+        mask = legal_mask.to(dtype=torch.bool, device=probs.device)
+        # Dòng không còn hành động hợp lệ (ván đã kết thúc) -> coi như toàn bộ hợp lệ
+        # để khớp với ``apply_legal_mask`` và tránh entropy = 0 giả.
+        empty_rows = ~mask.any(dim=-1, keepdim=True)
+        mask = mask | empty_rows
+
+        terms = probs * log_probs_all
+        terms = torch.where(mask, terms, torch.zeros_like(terms))
+        entropy = -(terms.sum(dim=-1))
         return log_probs, entropy, out.value
 
     @property

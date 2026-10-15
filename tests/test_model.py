@@ -130,6 +130,39 @@ def test_evaluate_shapes_and_entropy(batched_graphs, small_model) -> None:
     assert (entropy >= 0).all()
 
 
+def test_evaluate_entropy_is_finite_and_masked(batched_graphs, small_model) -> None:
+    """HỒI QUY cho bug vòng train 1e6 bước: entropy phải finite, không NaN.
+
+    Nguyên nhân cũ: ``-(probs * log_probs_all).sum(-1)`` tính cả trên hành
+    động ngoài legal mask, trong đó ``probs=0`` và ``log_probs=-inf`` nên
+    ``0 * -inf = NaN``. NaN lan sang ``loss`` -> ``GradScaler`` bỏ qua
+    ``optimizer.step()`` -> cả vòng train 1e6 bước không học gì.
+    """
+    batch, mask = batched_graphs
+    actions = torch.tensor(
+        [int(m.nonzero()[0]) for m in mask], dtype=torch.long
+    )
+    log_probs, entropy, _values = small_model.evaluate(batch, actions, mask)
+
+    assert torch.isfinite(entropy).all(), (
+        f"entropy chứa NaN/Inf: {entropy}. Bug 0 * -inf ngoài legal mask."
+    )
+    assert torch.isfinite(log_probs).all()
+    assert (entropy >= 0).all()
+
+    # Entropy phải khớp công thức thủ công chỉ trên hành động hợp lệ.
+    import torch.nn.functional as F
+
+    with torch.no_grad():
+        out = small_model(batch, mask)
+        logp = F.log_softmax(out.logits, dim=-1)
+        probs = logp.exp()
+        ref = -(
+            torch.where(mask, probs * logp, torch.zeros_like(probs)).sum(dim=-1)
+        )
+    assert torch.allclose(entropy, ref, atol=1e-5)
+
+
 def test_backward_gradients_flow_everywhere(batched_graphs, small_model) -> None:
     """Backward phải tạo gradient cho TẤT CẢ tham số (kể cả motif_bank)."""
     batch, mask = batched_graphs

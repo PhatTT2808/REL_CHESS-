@@ -171,6 +171,14 @@ class PPOAgent:
         self.use_amp = bool(config.use_amp) and self.device.type == "cuda"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
+        # --- Chống "train chết âm thầm" ---
+        # ``_init_scale``: scale ban đầu của GradScaler. Khi GradScaler phát hiện
+        # inf/NaN trong grad, nó GIẢM scale và bỏ qua ``optimizer.step()``. Ta so
+        # scale hiện tại với scale ban đầu để phát hiện việc skip này.
+        self._init_scale = float(self.scaler.get_scale())
+        # Tổng số minibatch đã bị skip kể từ lúc khởi tạo agent.
+        self.skipped_steps = 0
+
         self.last_stats: Dict[str, float] = {}
 
     # ------------------------------------------------------------------
@@ -268,12 +276,15 @@ class PPOAgent:
         n = len(all_graphs)
         mb_size = max(1, min(self.config.minibatch_size, n))
         stats: Dict[str, float] = {}
+        skipped_before = self.skipped_steps
+        n_minibatches = 0
 
         for _epoch in range(self.config.update_epochs):
             perm = torch.randperm(n)
             for start in range(0, n, mb_size):
                 mb_idx = perm[start : start + mb_size]
                 idx_list = mb_idx.tolist()
+                n_minibatches += 1
 
                 batch = Batch.from_data_list(
                     [all_graphs[i] for i in idx_list]
@@ -310,12 +321,29 @@ class PPOAgent:
                         + self.config.entropy_coef * entropy_loss
                     )
 
+                if not torch.isfinite(loss):
+                    raise FloatingPointError(
+                        "loss = NaN/Inf trong PPO update. "
+                        "Thường do entropy tính cả trên hành động ngoài legal mask "
+                        "(0 * -inf) hoặc logits/log_prob không hữu hạn. "
+                        "Kiểm tra lại XiangqiPolicyNet.evaluate()."
+                    )
+
                 self.optimizer.zero_grad(set_to_none=True)
                 self.scaler.scale(loss).backward()
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(
+                grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.config.max_grad_norm
                 )
+
+                # GradScaler bỏ qua step khi gặp inf/NaN trong grad. Ghi lại
+                # số lần bị skip để phát hiện "train chết âm thầm" (chính là
+                # chuyện đã xảy ra ở vòng train 1e6 bước trước).
+                was_skipped = bool(
+                    self.scaler.get_scale() < self._init_scale
+                )
+                if was_skipped:
+                    self.skipped_steps += 1
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
 
@@ -330,11 +358,24 @@ class PPOAgent:
                     "entropy": float(entropy.mean().item()),
                     "approx_kl": float(approx_kl.item()),
                     "clip_frac": float(clip_frac.item()),
+                    "grad_norm": float(grad_norm),
                     "loss": float(loss.item()),
                     "lr": float(self.optimizer.param_groups[0]["lr"]),
                 }
 
         self.scheduler.step()
         self.last_stats = stats
+
+        stats["skipped_steps"] = self.skipped_steps
+        stats["minibatches"] = n_minibatches
+
+        # Cảnh báo nếu cả lần update đều bị GradScaler bỏ qua -> mô hình
+        # không học được gì dù vẫn "chạy" suốt 1e6 bước.
+        skipped_now = self.skipped_steps - skipped_before
+        if skipped_now > 0:
+            logger.warning(
+                "GradScaler đã bỏ qua %d/%d minibatch trong lần update (grad inf/NaN).",
+                skipped_now, n_minibatches,
+            )
         return stats
 
