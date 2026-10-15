@@ -51,7 +51,7 @@ training:
   # Dùng AMP (mixed precision) khi có CUDA
   use_amp: true
   # Kích thước batch con khi cập nhật PPO (mini-batch gradient descent)
-  minibatch_size: 4096
+  minibatch_size: 1024
   # Số bước giữa 2 lần snapshot model vào opponent pool
   pool_snapshot_interval: 5
 

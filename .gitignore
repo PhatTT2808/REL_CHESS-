@@ -6,3 +6,7 @@ __pycache__/
 logs/metrics.jsonl
 logs/train.log
 figures/
+# rác sinh ra khi chạy smoke test cục bộ — không lưu lên git
+logs_smoke/
+checkpoints_smoke/
+figures_smoke/

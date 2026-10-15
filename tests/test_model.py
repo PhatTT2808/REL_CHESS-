@@ -150,6 +150,12 @@ def test_evaluate_entropy_is_finite_and_masked(batched_graphs, small_model) -> N
     assert torch.isfinite(log_probs).all()
     assert (entropy >= 0).all()
 
+    # NEG_INF phải biểu diễn được trong float16 (max 65504). Nếu vượt quá,
+    # AMP sẽ đổi thành -inf -> grad inf -> GradScaler skip cả lần update.
+    from src.models.policy_net import NEG_INF as _neg
+
+    assert float(_neg) >= -65504.0, f"NEG_INF={_neg} tràn float16 thành -inf."
+
     # Entropy phải khớp công thức thủ công chỉ trên hành động hợp lệ.
     import torch.nn.functional as F
 

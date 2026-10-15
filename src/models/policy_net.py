@@ -35,7 +35,11 @@ from src.models.motif_attention import MotifAttention
 logger = logging.getLogger(__name__)
 
 # Giá trị dùng để "chặn" các hành động không hợp lệ trước softmax.
-NEG_INF = -1e9
+#
+# LƯU Ý AMP/float16: giá trị cũ -1e9 tràn float16 (max 65504) thành -inf rồi
+# thối ngược qua softmax/log/entropy gây grad inf và GradScaler skip update.
+# -1e4 đã đủ để softmax ~0 và an toàn cho float16.
+NEG_INF = -1e4
 
 
 @dataclass
