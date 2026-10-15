@@ -69,8 +69,22 @@ echo ">> Cài torch (${TORCH_VARIANT}) ..."
 "${VENV_PY}" -m pip install --quiet torch --index-url "${TORCH_INDEX}"
 
 # --- 6. Cài phần còn lại từ requirements.txt ---
+# Dùng --upgrade + --extra-index-url: requirements.txt khai báo ``torch>=2.2``.
+# Nếu KHÔNG có --upgrade, pip thấy torch đã cài (ở bước 5) nên sẽ GIỮ bản CPU
+# và ghi đè bản CUDA vừa cài => ``torch.cuda.is_available() == False``.
 echo ">> Cài requirements.txt ..."
-"${VENV_PY}" -m pip install --quiet -r requirements.txt
+"${VENV_PY}" -m pip install --quiet --upgrade -r requirements.txt \
+  --extra-index-url "${TORCH_INDEX}"
+
+# Bảo đảm torch đúng biến thể: nếu requirements.txt kéo lại bản CPU thì ép lại.
+if ! "${VENV_PY}" - <<'PY'
+import sys, torch
+sys.exit(0 if ("+cpu" not in torch.__version__) else 1)
+PY
+then
+  echo ">> requirements.txt đã kéo torch về bản CPU -> cài lại bản ${TORCH_VARIANT}"
+  "${VENV_PY}" -m pip install --quiet --force-reinstall torch --index-url "${TORCH_INDEX}"
+fi
 
 # --- 7. Kiểm tra ---
 echo ">> Kiểm tra import ..."
