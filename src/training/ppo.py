@@ -336,16 +336,26 @@ class PPOAgent:
                     self.model.parameters(), self.config.max_grad_norm
                 )
 
-                # GradScaler bỏ qua step khi gặp inf/NaN trong grad. Ghi lại
-                # số lần bị skip để phát hiện "train chết âm thầm" (chính là
-                # chuyện đã xảy ra ở vòng train 1e6 bước trước).
-                was_skipped = bool(
-                    self.scaler.get_scale() < self._init_scale
-                )
-                if was_skipped:
-                    self.skipped_steps += 1
+                # Phát hiện GradScaler có bỏ qua ``optimizer.step()`` hay không.
+                #
+                # BẪY (đã sửa ở đây): KHÔNG so ``scaler.get_scale()`` với scale
+                # ban đầu. Scale của GradScaler chỉ GIẢM một lần rồi giữ nguyên
+                # suốt phần đời còn lại, nên sau một lần skip, mọi minibatch về sau
+                # đều bị đánh dấu sai -> báo động giả "47/48 minibatch bị skip"
+                # dù train hoàn toàn bình thường.
+                #
+                # Cách đúng: so scale TRƯỚC và SAU chính lần ``scaler.update()``
+                # này. GradScaler chỉ giảm scale khi nó vừa bỏ qua step.
+                scale_before = float(self.scaler.get_scale())
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                scale_after = float(self.scaler.get_scale())
+
+                # Tín hiệu đáng tin cậy nhất: chính grad_norm sau khi unscale.
+                grad_finite = bool(torch.isfinite(grad_norm))
+                was_skipped = (scale_after < scale_before) or not grad_finite
+                if was_skipped:
+                    self.skipped_steps += 1
 
                 with torch.no_grad():
                     approx_kl = ((ratio - 1.0) - (log_probs - mb_old_log_probs)).mean()
@@ -368,10 +378,10 @@ class PPOAgent:
 
         stats["skipped_steps"] = self.skipped_steps
         stats["minibatches"] = n_minibatches
+        stats["skipped_this_update"] = skipped_now = self.skipped_steps - skipped_before
 
-        # Cảnh báo nếu cả lần update đều bị GradScaler bỏ qua -> mô hình
-        # không học được gì dù vẫn "chạy" suốt 1e6 bước.
-        skipped_now = self.skipped_steps - skipped_before
+        # Cảnh báo nếu GradScaler bỏ qua minibatch -> nghi ngờ grad inf/NaN,
+        # cần điều tra chứ không thể bỏ qua (bài học vòng train 1e6 trước).
         if skipped_now > 0:
             logger.warning(
                 "GradScaler đã bỏ qua %d/%d minibatch trong lần update (grad inf/NaN).",
