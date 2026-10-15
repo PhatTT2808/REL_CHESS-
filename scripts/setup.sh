@@ -6,8 +6,9 @@
 #
 # Dùng:
 #   bash scripts/setup.sh              # cài bản CPU
-#   bash scripts/setup.sh cu124        # cài bản CUDA 12.4
-#   bash scripts/setup.sh cu121        # cài bản CUDA 12.1
+#   bash scripts/setup.sh cu118        # GPU cũ: Tesla P4/K80/T4/P40/V100 (sm_3.7-6.1)
+#   bash scripts/setup.sh cu126        # GPU mới: 3060/40-series/A100 (sm_8.6+)
+#   bash scripts/setup.sh cu130        # GPU rất mới (mới nhất)
 #
 # Sau khi xong:
 #   source .venv/bin/activate
