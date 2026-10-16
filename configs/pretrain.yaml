@@ -20,12 +20,18 @@ training:
   device: auto
 
 pretrain:
-  dataset_path: data/xiangqi_train.parquet
-  label: played
+  # Nhiều file dataset (mặc định: cả train + test ~= 128k vị trí).
+  dataset_paths:
+    - data/xiangqi_train.parquet
+    - data/xiangqi_test.parquet
+  label: best
   epochs: 8
   batch_size: 256
   lr: 0.001
   value_coef: 0.5
   val_ratio: 0.05
+  # Dừng sớm nếu val acc không cải thiện sau N epoch liên tiếp (chống overfit)
+  early_stop_patience: 3
+  dedupe: true
   num_workers: 4
   device: auto

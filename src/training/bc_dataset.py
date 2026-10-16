@@ -1,7 +1,7 @@
 """Dataset Behavioral Cloning cho cờ tướng từ parquet public (Pikafish pipeline).
 
-Nguồn: ``ysong18/xiangqi-dataset`` (HuggingFace, 63k dòng train), mỗi dòng là
-một vị trí do pipeline Pikafish sinh ra:
+Nguồn: ``ysong18/xiangqi-dataset`` (HuggingFace: 63k train + 65k test = ~128k
+vị trí), mỗi dòng là một vị trí do pipeline Pikafish sinh ra:
 
     board90 : chuỗi 90 ký tự, hàng 0 = hàng trên; '.' = ô trống,
               chữ HOA = Đen, chữ thường = Đỏ (đúng quy ước FEN của cchess).
@@ -32,10 +32,17 @@ from src.env.graph_builder import build_graph
 
 logger = logging.getLogger(__name__)
 
-DATASET_URL = (
-    "https://huggingface.co/api/datasets/ysong18/xiangqi-dataset"
-    "/parquet/default/train/0.parquet"
-)
+DATASET_URLS = {
+    "train": (
+        "https://huggingface.co/api/datasets/ysong18/xiangqi-dataset"
+        "/parquet/default/train/0.parquet"
+    ),
+    "test": (
+        "https://huggingface.co/api/datasets/ysong18/xiangqi-dataset"
+        "/parquet/default/test/0.parquet"
+    ),
+}
+DATASET_URL = DATASET_URLS["train"]
 
 
 def iccs_to_action(move: str) -> int:
@@ -71,17 +78,25 @@ class XiangqiBCDataSet(Dataset):
     """Dataset BC: ``(graph, legal_mask, action, value_target, weight)``.
 
     Args:
-        parquet_path: File ``*.parquet`` đã tải từ HuggingFace.
-        label: ``"played"`` (nước đã đi trong ván) hoặc ``"best"`` (nước tốt
-            nhất theo engine). Mặc định ``"played"`` để khớp phân phối ván.
+        parquet_path: File ``*.parquet`` ĐÃN tải — HOẶC danh sách nhiều file
+            (train + test của ysong18 = ~128k vị trí, gấp đôi trước).
+        label: ``"best"`` (nước tốt nhất theo engine — kiến nghị mới, chất
+            lượng cao hơn ``"played"``) hoặc ``"played"``.
         max_samples: Giới hạn số mẫu (debug nhanh); ``None`` = toàn bộ.
+        dedupe: Loại bỏ thế cờ trùng (board90+side) giữ lại bản ``best``
+            đầu tiên (mặc định True — data engine có nhiều dòng trùng).
+
+    BÀI HỌC từ vòng pretrain 63k cũ (val acc 0.094 rồi overfit):
+        - train split một mình là chưa đủ đa dạng -> gộp thêm test split.
+        - label 'played' chứa nước yếu của người chơi -> 'best' sạch hơn.
     """
 
     def __init__(
         self,
-        parquet_path: str,
-        label: str = "played",
+        parquet_path: str | List[str],
+        label: str = "best",
         max_samples: Optional[int] = None,
+        dedupe: bool = True,
     ) -> None:
         import pyarrow.parquet as pq
 
@@ -89,44 +104,61 @@ class XiangqiBCDataSet(Dataset):
             raise ValueError("label phải là 'played' hoặc 'best'")
         self.label = label
 
-        path = Path(parquet_path)
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"Không tìm thấy dataset: {path}. Tải bằng:\n"
-                f"  curl -L -o {path} {DATASET_URL}"
-            )
-        tbl = pq.read_table(
-            str(path),
-            columns=["board", "side", "played", "best", "resultQ"],
-        )
-        cols = tbl.to_pydict()
-        n = tbl.num_rows if max_samples is None else min(tbl.num_rows, max_samples)
+        paths = [parquet_path] if isinstance(parquet_path, str) else list(parquet_path)
+        for p in paths:
+            if not Path(p).is_file():
+                raise FileNotFoundError(
+                    f"Không tìm thấy dataset: {p}. Tải bằng:\n"
+                    + "\n".join(
+                        f"  curl -L -o {name}.parquet {url}"
+                        for name, url in DATASET_URLS.items()
+                    )
+                )
 
         self.rows: List[Dict[str, Any]] = []
         n_skip = 0
-        for i in range(n):
-            move = cols[label][i]
-            if not move or len(move) != 4:
-                n_skip += 1
-                continue
-            try:
-                action = iccs_to_action(move)
-            except ValueError:
-                n_skip += 1
-                continue
-            self.rows.append(
-                {
-                    "board90": cols["board"][i],
-                    "side": cols["side"][i],
-                    "action": action,
-                    "resultQ": float(cols["resultQ"][i] or 0.0),
-                    "is_best": bool(cols["played"][i] == cols["best"][i]),
-                }
+        seen = set()
+        n_files = 0
+        for p in paths:
+            tbl = pq.read_table(
+                str(p),
+                columns=["board", "side", "played", "best", "resultQ"],
             )
+            cols = tbl.to_pydict()
+            n = tbl.num_rows
+            n_files += n
+            for i in range(n):
+                move = cols[label][i]
+                if not move or len(move) != 4:
+                    n_skip += 1
+                    continue
+                key = (cols["board"][i], cols["side"][i])
+                if dedupe and key in seen:
+                    continue
+                try:
+                    action = iccs_to_action(move)
+                except ValueError:
+                    n_skip += 1
+                    continue
+                seen.add(key)
+                self.rows.append(
+                    {
+                        "board90": cols["board"][i],
+                        "side": cols["side"][i],
+                        "action": action,
+                        "resultQ": float(cols["resultQ"][i] or 0.0),
+                        "is_best": bool(cols["played"][i] == cols["best"][i]),
+                    }
+                )
+                if max_samples is not None and len(self.rows) >= max_samples:
+                    break
+            if max_samples is not None and len(self.rows) >= max_samples:
+                break
         if n_skip:
-            logger.warning("Bỏ qua %d/%d mẫu lỗi.", n_skip, n)
+            logger.warning("Bỏ qua %d/%d mẫu lỗi.", n_skip, n_files)
         logger.info(
-            "Nạp BC dataset: %d mẫu từ %s (label=%s).", len(self.rows), path, label,
+            "Nạp BC dataset: %d mẫu (dedupe %s) từ %d file (label=%s).",
+            len(self.rows), "BẬT" if dedupe else "TẮT", len(paths), label,
         )
 
     def __len__(self) -> int:

@@ -34,7 +34,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.models.policy_net import XiangqiPolicyNet
-from src.training.bc_dataset import DATASET_URL, XiangqiBCDataSet, bc_collate
+from src.training.bc_dataset import (
+    DATASET_URLS,
+    XiangqiBCDataSet,
+    bc_collate,
+)
 from src.utils.checkpoint import save_checkpoint
 from src.utils.config import ensure_dir, get_device, load_config, resolve_path
 from src.utils.seed import set_seed
@@ -56,17 +60,26 @@ def build_model_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def download_dataset(path: Path) -> None:
-    """Tải dataset parquet từ HuggingFace nếu chưa có (~46MB)."""
+def download_dataset(paths: List[Path]) -> None:
+    """Tải dataset parquet từ HuggingFace nếu chưa có (~46MB mỗi split).
+
+    Args:
+        paths: Danh sách file đích; chỉ tải file chưa tồn tại.
+    """
     import urllib.request
 
-    ensure_dir(str(path.parent))
-    logger.info("Đang tải dataset: %s", DATASET_URL)
-    with urllib.request.urlopen(DATASET_URL, timeout=300) as resp, open(
-        path, "wb"
-    ) as fh:
-        fh.write(resp.read())
-    logger.info("Đã tải xong: %s", path)
+    names = ["train", "test"][: len(paths)]
+    for name, path in zip(names, paths):
+        if path.is_file() and path.stat().st_size > 0:
+            logger.info("Đã có dataset: %s", path)
+            continue
+        ensure_dir(str(path.parent))
+        logger.info("Đang tải dataset %s: %s", name, DATASET_URLS[name])
+        with urllib.request.urlopen(DATASET_URLS[name], timeout=600) as resp, open(
+            path, "wb"
+        ) as fh:
+            fh.write(resp.read())
+        logger.info("Đã tải xong: %s", path)
 
 
 def accuracy(logits: torch.Tensor, acts: torch.Tensor, mask: torch.Tensor) -> float:
@@ -90,14 +103,20 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
     set_seed(int(config.get("seed", 42)))
     bc = config["pretrain"]
 
-    dataset_path = resolve_path(bc["dataset_path"])
-    if args.download or not dataset_path.is_file():
-        download_dataset(dataset_path)
+    # Nhiều file dataset (mặc định: cả train + test ~= 128k vị trí).
+    ds_paths = bc.get("dataset_paths") or [bc.get("dataset_path", "")]
+    dataset_paths = [resolve_path(p) for p in ds_paths if p]
+    if args.download:
+        for p in dataset_paths:
+            if p.is_file():
+                p.unlink()
+    download_dataset(dataset_paths)
 
     full = XiangqiBCDataSet(
-        str(dataset_path),
-        label=str(bc.get("label", "played")),
+        [str(p) for p in dataset_paths],
+        label=str(bc.get("label", "best")),
         max_samples=args.max_samples,
+        dedupe=bool(bc.get("dedupe", True)),
     )
     if len(full) < 10:
         raise RuntimeError("Dataset quá nhỏ — kiểm tra lại file parquet.")
@@ -133,6 +152,10 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
     ckpt_path = out_dir / "pretrain.pt"
 
     best_val_acc = -1.0
+    # Early stopping: vòng 63k mẫu cho thấy val acc đạt đỉnh ở epoch 4 rồi
+    # tụt (overfit 4.6M tham số). Dừng sớm + khôi phục trọng số tốt nhất.
+    patience = int(bc.get("early_stop_patience", 3))
+    epochs_no_improve = 0
     for epoch in range(1, epochs + 1):
         model.train()
         t0 = time.time()
@@ -193,15 +216,27 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
 
         if vacc > best_val_acc:
             best_val_acc = vacc
+            epochs_no_improve = 0
             save_checkpoint(
                 model, opt, epoch, config["paths"]["checkpoints"],
                 filename="pretrain.pt",
                 extra={
                     "stage": "pretrain_bc", "epoch": epoch, "val_acc": vacc,
-                    "dataset": str(dataset_path),
+                    "dataset": [str(p) for p in dataset_paths],
                 },
             )
             logger.info("  -> val acc tốt nhất (%.3f), lưu %s", vacc, ckpt_path)
+        else:
+            epochs_no_improve += 1
+            logger.info(
+                "  -> không cải thiện (%d/%d).", epochs_no_improve, patience,
+            )
+            if epochs_no_improve >= patience:
+                logger.info(
+                    "Early stopping ở epoch %d (best val acc=%.3f).",
+                    epoch, best_val_acc,
+                )
+                break
 
     logger.info("Hoàn tất pretrain. Val accuracy tốt nhất = %.3f", best_val_acc)
     logger.info(
