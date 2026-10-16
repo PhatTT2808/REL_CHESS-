@@ -35,13 +35,14 @@ training:
   gae_lambda: 0.95
   clip_epsilon: 0.2
   value_coef: 0.5
-  entropy_coef: 0.01
+  # Hậu pretrain: model đã biết đi cờ, tăng khám phá để tìm chiến thuật
+  # thắng thay vì giữ nước hòa an toàn (draw -0.4 sẽ phạt hòa).
+  entropy_coef: 0.02
   max_grad_norm: 0.5
   update_epochs: 4
   batch_size: 512
   total_steps: 1000000
   games_per_batch: 512
-  max_moves: 200
   checkpoint_interval: 10000
   # auto = dùng CUDA nếu có, ngược lại CPU
   device: auto
@@ -57,7 +58,11 @@ training:
 
 # --- Môi trường ---
 env:
-  max_moves: 200
+  # Sau pretrain BC (val acc 0.137, Elo +55.8): model đã biết đi cờ, không
+  # còn đi bừa. max_moves 200 là quá dài và khiến 83% ván kết thúc bằng
+  # chạm trần -> học chiến lược hòa. Giảm xuống 120 để ép kết thúc nhanh
+  # và giảm tỉ lệ hòa, buộc PPO học chiếu hết thay vì câu giờ.
+  max_moves: 120
   perpetual_check_limit: 6
   # Lọc các nước đi tự-chiếu-tướng khỏi legal mask (đúng luật nhưng tốn CPU).
   # Bật = đúng luật; tắt = nhanh hơn nhưng chấp nhận nước hớ khi debug.
@@ -68,9 +73,15 @@ env:
 #   - draw -0.1 + step_penalty 0.005: chống "kéo giờ" (cũ 91% hoà).
 #   - material_coef là hệ số PHI cho potential-based shaping (không lấn terminal).
 reward:
+  # --- Hệ số chống "hòa an toàn" (đo được ở vòng pretrain+PPO 1M) ---
+  # Bản cũ draw -0.1 + max_moves 200 khiến model HỌC CHỌN HÒA:
+  #   83% ván hòa, avg_moves 111/120 (chạm trần), win_rate chỉ 12%.
+  # Nâng draw lên -0.4 + max_moves 120 để "thắng nhanh" sinh lời hơn "hòa".
+  # Pretrain BC (128k, val acc 0.137) đã cho Elo +55.8 [12.6, 79.6] vs Random —
+  # giai đoạn này dùng PPO để biến "không thua" thành "thắng".
   win: 1.0
   loss: -1.0
-  draw: -0.1
+  draw: -0.4
   material_coef: 0.01
   step_penalty: 0.005
   potential_gamma: 0.99
