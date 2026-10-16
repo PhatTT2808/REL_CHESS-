@@ -77,6 +77,14 @@ def accuracy(logits: torch.Tensor, acts: torch.Tensor, mask: torch.Tensor) -> fl
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Pretrain BC cho cờ tướng")
+    p.add_argument("--config", default="configs/pretrain.yaml")
+    p.add_argument("--max-samples", type=int, default=None,
+                   help="Giới hạn số mẫu (debug nhanh).")
+    p.add_argument("--download", action="store_true",
+                   help="Buộc tải lại dataset dù file đã tồn tại.")
+    return p.parse_args()
+
+
 def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
     """Chạy vòng lặp Behavioral Cloning và lưu ``checkpoints/pretrain.pt``."""
     set_seed(int(config.get("seed", 42)))
@@ -215,10 +223,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    p.add_argument("--config", default="configs/pretrain.yaml")
-    p.add_argument("--max-samples", type=int, default=None,
-                   help="Giới hạn số mẫu (debug nhanh).")
-    p.add_argument("--download", action="store_true",
-                   help="Buộc tải lại dataset dù file đã tồn tại.")
-    return p.parse_args()
 
