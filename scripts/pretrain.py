@@ -151,9 +151,19 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
     out_dir = ensure_dir(config["paths"]["checkpoints"])
     ckpt_path = out_dir / "pretrain.pt"
 
+    # Cosine annealing: LR giảm dần về ~0 theo tổng số epoch. Nhờ đó các
+    # epoch cuối "ổn định" thay vì rung quanh LR cao -> val acc đo được
+    # chính xác hơn (vòng 128k: val p tăng lại ở epoch 5-8 do LR cố định).
+    scheduler = None
+    if bool(bc.get("use_cosine_lr", False)):
+        base_lr = float(bc.get("lr", 1e-3))
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            opt, T_max=max(1, epochs), eta_min=base_lr * 0.02
+        )
+        logger.info("Dùng cosine LR: %.2e -> %.2e", base_lr, base_lr * 0.02)
+
     best_val_acc = -1.0
-    # Early stopping: vòng 63k mẫu cho thấy val acc đạt đỉnh ở epoch 4 rồi
-    # tụt (overfit 4.6M tham số). Dừng sớm + khôi phục trọng số tốt nhất.
+    # Early stopping: dừng nếu val acc không cải thiện sau N epoch liên tiếp.
     patience = int(bc.get("early_stop_patience", 3))
     epochs_no_improve = 0
     for epoch in range(1, epochs + 1):
@@ -237,6 +247,9 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
                     epoch, best_val_acc,
                 )
                 break
+        if scheduler is not None:
+            scheduler.step()
+            logger.info("  LR hiện tại: %.2e", float(scheduler.get_last_lr()[0]))
 
     logger.info("Hoàn tất pretrain. Val accuracy tốt nhất = %.3f", best_val_acc)
     logger.info(

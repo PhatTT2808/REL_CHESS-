@@ -25,13 +25,19 @@ pretrain:
     - data/xiangqi_train.parquet
     - data/xiangqi_test.parquet
   label: best
-  epochs: 8
+  # Vòng 128k mẫu (14/10): val acc TĂNG ĐỀU 0.094 -> 0.136 qua cả 8 epoch,
+  # train acc chỉ 0.216 << val 0.136 => đang UNDERFIT (thiếu epoch chứ không
+  # phải overfit). Nên tăng epochs lên 24 và thêm cosine decay cho LR.
+  epochs: 24
   batch_size: 256
   lr: 0.001
+  # Cosine annealing: LR giảm dần về ~0, giúp 24 epoch thu được nhiều hơn
+  # so với giữ LR cố định (tránh rung ở cuối khiến val acc nhiễu).
+  use_cosine_lr: true
   value_coef: 0.5
   val_ratio: 0.05
   # Dừng sớm nếu val acc không cải thiện sau N epoch liên tiếp (chống overfit)
-  early_stop_patience: 3
+  early_stop_patience: 5
   dedupe: true
   num_workers: 4
   device: auto
