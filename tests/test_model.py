@@ -130,6 +130,34 @@ def test_evaluate_shapes_and_entropy(batched_graphs, small_model) -> None:
     assert (entropy >= 0).all()
 
 
+def test_iccs_to_action_roundtrip() -> None:
+    """Mã hoá ICCS -> action phải đúng ánh xạ hành động của env.
+
+    Quy ước ĐÃ xác minh trên 2000 mẫu dataset: ``y_cchess == rank``,
+    100% nước ``played`` hợp lệ theo ``cchess.ChessBoard``.
+    """
+    from src.env.constants import pos_to_index
+    from src.training.bc_dataset import iccs_to_action
+
+    # g2e3: từ (6, 2) tới (4, 3) — giống ví dụ trong XiangqiEnv.
+    a = iccs_to_action("g2e3")
+    assert a == pos_to_index(6, 2) * 90 + pos_to_index(4, 3)
+
+    # Mã sai phải raise thay vì trả số rác.
+    with pytest.raises(ValueError):
+        iccs_to_action("z9z9")
+
+
+def test_board90_to_grid_length() -> None:
+    """board90 ngắn/dài bất thường phải raise ngay."""
+    from src.training.bc_dataset import board90_to_grid
+
+    with pytest.raises(ValueError):
+        board90_to_grid("...")
+    grid = board90_to_grid("." * 90)
+    assert len(grid) == 10 and len(grid[0]) == 9
+
+
 def test_evaluate_entropy_is_finite_and_masked(batched_graphs, small_model) -> None:
     """HỒI QUY cho bug vòng train 1e6 bước: entropy phải finite, không NaN.
 

@@ -10,3 +10,5 @@ figures/
 logs_smoke/
 checkpoints_smoke/
 figures_smoke/
+# dataset pretrain tải về (~46MB) — script tự tải lại nếu thiếu
+data/

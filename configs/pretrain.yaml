@@ -1,0 +1,31 @@
+seed: 42
+
+paths:
+  checkpoints: checkpoints_pretrain
+  logs: logs
+  figures: figures
+  pool: checkpoints_pretrain/pool
+
+model:
+  gnn_hidden_dim: 128
+  gnn_layers: 3
+  gnn_heads: 4
+  motif_dim: 64
+  num_motifs: 30
+  policy_hidden: 512
+  value_hidden: 256
+  dropout: 0.1
+
+training:
+  device: auto
+
+pretrain:
+  dataset_path: data/xiangqi_train.parquet
+  label: played
+  epochs: 8
+  batch_size: 256
+  lr: 0.001
+  value_coef: 0.5
+  val_ratio: 0.05
+  num_workers: 4
+  device: auto
