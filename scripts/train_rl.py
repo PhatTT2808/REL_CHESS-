@@ -100,12 +100,23 @@ def build_model_kwargs(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def train(config: Dict[str, Any], resume: bool = False) -> None:
+def train(
+    config: Dict[str, Any],
+    resume: bool = False,
+    init_ckpt: Optional[str] = None,
+) -> None:
     """Chạy vòng lặp huấn luyện PPO self-play.
 
     Args:
         config: Dict cấu hình đã nạp từ YAML.
-        resume: Nếu ``True``, nạp checkpoint mới nhất để tiếp tục.
+        resume: Nếu ``True``, nạp checkpoint mới nhất để tiếp tục (bao gồm
+            optimizer/scheduler — đúng nghĩa resume sau khi dừng).
+        init_ckpt: Nếu cung cấp, nạp CHỈ model từ file đó (pretrain BC),
+            optimizer/scheduler giữ nguyên khởi tạo, ``start_step=0``.
+
+    LƯU Ý: Không dùng ``--resume`` và ``--init-ckpt`` cùng lúc. Nếu cả hai
+    được bật, ``--init-ckpt`` được ưu tiên (vì pretrain không tương thích
+    optimizer PPO cũ).
     """
     seed = int(config.get("seed", 42))
     set_seed(seed)
@@ -139,7 +150,23 @@ def train(config: Dict[str, Any], resume: bool = False) -> None:
     )
 
     start_step = 0
-    if resume:
+    if init_ckpt:
+        if resume:
+            logger.warning(
+                "Đã bật đồng thời --resume và --init-ckpt. Ưu tiên --init-ckpt "
+                "(pretrain BC) và BỎ QUA --resume để tránh nạp nhầm state của "
+                "bản PPO 1M cũ (optimizer/scheduler không tương thích)."
+            )
+        meta = load_checkpoint(
+            init_ckpt, model, optimizer=None, map_location=str(device),
+            scheduler=None,
+        )
+        logger.info(
+            "Warm-start PPO từ pretrain BC: %s (step=%s, pretrain val_acc=%s).",
+            init_ckpt, meta.get("step"),
+            meta.get("extra", {}).get("val_acc"),
+        )
+    elif resume:
         ckpt = latest_checkpoint(paths["checkpoints"])
         if ckpt is not None:
             meta = load_checkpoint(
@@ -269,6 +296,12 @@ def parse_args() -> argparse.Namespace:
         "--resume", action="store_true",
         help="Tiếp tục từ checkpoint mới nhất trong paths.checkpoints.",
     )
+    parser.add_argument(
+        "--init-ckpt", type=str, default=None,
+        help="Warm-start: nạp CHỈ trọng số model từ file này (ví dụ "
+        "checkpoints_pretrain/pretrain.pt), sau đó train tiếp như mới "
+        "(optimizer/scheduler reset, step đếm từ 0, KHÔNG dùng step cũ).",
+    )
     parser.add_argument("--seed", type=int, default=None, help="Ghi đè seed.")
     parser.add_argument(
         "--total-steps", type=int, default=None, help="Ghi đè training.total_steps.",
@@ -286,7 +319,7 @@ def main() -> None:
         overrides["training.total_steps"] = args.total_steps
 
     config = load_config(args.config, overrides=overrides or None)
-    train(config, resume=args.resume)
+    train(config, resume=args.resume, init_ckpt=args.init_ckpt)
 
 
 if __name__ == "__main__":
