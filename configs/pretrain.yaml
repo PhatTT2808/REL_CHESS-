@@ -24,7 +24,20 @@ pretrain:
   dataset_paths:
     - data/xiangqi_train.parquet
     - data/xiangqi_test.parquet
+  # Hậu 4 vòng pretrain: 'best' (nước engine) đạt val acc 0.137, gấp đôi
+  # 'played' (0.094). 'best' là nhãn chuyên gia.
   label: best
+  # === HƯỚNG C — lọc data chuyên gia (được khuyến nghị bật) ===
+  # |resultQ| >= 0.3: chỉ giữ thế cờ quyết định (ván có kết quả rõ).
+  # ĐO THỰC TẾ: resultQ là biến NHỊ PHÂN (-1/0/1) nên ngưỡng 0.3 ≡ "bỏ hòa",
+  # cắt 47.4% dữ liệu, còn 52.6% thế cờ quyết định.
+  min_abs_resultq: 0.30
+  # policyKld <= 0.5: engine chắc chắn về nước đi.
+  # ĐO THỰC TẾ: kld<=2.0 giữ 99.6% (vô dụng), kld<=0.5 giữ 90.2% -> lọc vừa,
+  # không quá mạnh để mất data (đã còn 47% sau bộ lọc resultQ).
+  # KẾT HỢP: giữ ~46% (~59k mẫu) — ít hơn nhưng SẠCH (thế quyết định + nước rõ).
+  max_policy_kld: 0.5
+  dedupe: true
   # Vòng 128k mẫu (14/10): val acc TĂNG ĐỀU 0.094 -> 0.136 qua cả 8 epoch,
   # train acc chỉ 0.216 << val 0.136 => đang UNDERFIT (thiếu epoch chứ không
   # phải overfit). Nên tăng epochs lên 24 và thêm cosine decay cho LR.

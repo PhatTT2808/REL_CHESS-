@@ -117,6 +117,9 @@ def pretrain(config: Dict[str, Any], args: argparse.Namespace) -> None:
         label=str(bc.get("label", "best")),
         max_samples=args.max_samples,
         dedupe=bool(bc.get("dedupe", True)),
+        min_abs_resultq=float(bc.get("min_abs_resultq", 0.0)),
+        max_policy_kld=bc.get("max_policy_kld"),
+        require_best_move=bool(bc.get("require_best_move", False)),
     )
     if len(full) < 10:
         raise RuntimeError("Dataset quá nhỏ — kiểm tra lại file parquet.")

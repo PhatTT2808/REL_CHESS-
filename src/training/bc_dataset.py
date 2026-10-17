@@ -85,10 +85,20 @@ class XiangqiBCDataSet(Dataset):
         max_samples: Giới hạn số mẫu (debug nhanh); ``None`` = toàn bộ.
         dedupe: Loại bỏ thế cờ trùng (board90+side) giữ lại bản ``best``
             đầu tiên (mặc định True — data engine có nhiều dòng trùng).
+        min_abs_resultq: Chỉ giữ thế cờ có ``|resultQ| >= ngưỡng`` (hướng C —
+            "data chuyên gia"). ``0.0`` = giữ tất cả.
+        max_policy_kld: Chỉ giữ thế cờ mà engine **chắc chắn** về nước đi
+            (``policyKld`` nhỏ = phân phối tập trung). ``None`` = giữ tất cả.
+        require_best_move: Chỉ giữ dòng mà nước engine tốt nhất khớp với
+            ``label`` (dữ liệu "thuần chuyên gia").
 
-    BÀI HỌC từ vòng pretrain 63k cũ (val acc 0.094 rồi overfit):
-        - train split một mình là chưa đủ đa dạng -> gộp thêm test split.
-        - label 'played' chứa nước yếu của người chơi -> 'best' sạch hơn.
+    BÀI HỌC từ 4 vòng train (17/10) — vì sao cần lọc:
+        - pretrain 63k 'played' : val acc 0.094
+        - pretrain 128k 'best'  : val acc 0.137  -> +46%
+        - PPO warm trên 'best'  : Elo +55.8 -> +17.2 (TỆ), draw vẫn 86%
+      => data đã tốt hơn nhưng PPO vẫn học hòa. Lọc theo CHẤT LƯỢNG ván
+      (resultQ) và ĐỘ TIN CẬY của engine (policyKld) sẽ cho tập huấn luyện
+      "sạch" hơn: chỉ thế cờ quyết định + nước đi engine chắc chắn.
     """
 
     def __init__(
@@ -97,6 +107,9 @@ class XiangqiBCDataSet(Dataset):
         label: str = "best",
         max_samples: Optional[int] = None,
         dedupe: bool = True,
+        min_abs_resultq: float = 0.0,
+        max_policy_kld: Optional[float] = None,
+        require_best_move: bool = False,
     ) -> None:
         import pyarrow.parquet as pq
 
@@ -115,19 +128,34 @@ class XiangqiBCDataSet(Dataset):
                     )
                 )
 
+        need_kld = max_policy_kld is not None
+        need_best_flag = require_best_move
+        read_cols = ["board", "side", "played", "best", "resultQ"]
+        if need_kld:
+            read_cols.append("policyKld")
+
         self.rows: List[Dict[str, Any]] = []
-        n_skip = 0
+        n_skip = n_kld = n_resultq = n_best = 0
         seen = set()
         n_files = 0
         for p in paths:
-            tbl = pq.read_table(
-                str(p),
-                columns=["board", "side", "played", "best", "resultQ"],
-            )
+            tbl = pq.read_table(str(p), columns=read_cols)
             cols = tbl.to_pydict()
             n = tbl.num_rows
             n_files += n
             for i in range(n):
+                # C) Lọc theo độ tin cậy engine (KLD thấp = phân phối tập trung).
+                if need_kld and cols["policyKld"][i] > max_policy_kld:
+                    n_kld += 1
+                    continue
+                # C) Chỉ giữ thế cờ quyết định (ván có kết quả rõ ràng).
+                if abs(float(cols["resultQ"][i] or 0.0)) < min_abs_resultq:
+                    n_resultq += 1
+                    continue
+                # C) Chỉ giữ dòng mà nước 'played' khớp 'best' (chuyên gia).
+                if need_best_flag and cols["played"][i] != cols["best"][i]:
+                    n_best += 1
+                    continue
                 move = cols[label][i]
                 if not move or len(move) != 4:
                     n_skip += 1
@@ -154,8 +182,12 @@ class XiangqiBCDataSet(Dataset):
                     break
             if max_samples is not None and len(self.rows) >= max_samples:
                 break
-        if n_skip:
-            logger.warning("Bỏ qua %d/%d mẫu lỗi.", n_skip, n_files)
+        if n_skip or n_kld or n_resultq or n_best:
+            logger.info(
+                "Lọc: lỗi=%d, KLD=%d, |resultQ|<%.3f:%d, !best=%d, giữ lại %d/%d.",
+                n_skip, n_kld, min_abs_resultq, n_resultq, n_best,
+                len(self.rows), n_files,
+            )
         logger.info(
             "Nạp BC dataset: %d mẫu (dedupe %s) từ %d file (label=%s).",
             len(self.rows), "BẬT" if dedupe else "TẮT", len(paths), label,
